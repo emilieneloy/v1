@@ -1,5 +1,5 @@
 {
-  "name": "v1",
+  "name": "shopify-ab-testing",
   "private": true,
   "workspaces": ["packages/*", "apps/*", "tooling/*"],
   "scripts": {

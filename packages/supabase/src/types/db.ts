@@ -9,37 +9,174 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      posts: {
+      tests: {
         Row: {
-          content: string;
-          created_at: string;
           id: string;
-          title: string;
-          updated_at: string;
+          name: string;
+          description: string | null;
+          status: "draft" | "active" | "paused" | "completed";
+          product_ids: string[] | null;
           user_id: string;
+          created_at: string;
+          started_at: string | null;
+          ended_at: string | null;
         };
         Insert: {
-          content: string;
-          created_at?: string;
           id?: string;
-          title: string;
-          updated_at?: string;
+          name: string;
+          description?: string | null;
+          status?: "draft" | "active" | "paused" | "completed";
+          product_ids?: string[] | null;
           user_id: string;
+          created_at?: string;
+          started_at?: string | null;
+          ended_at?: string | null;
         };
         Update: {
-          content?: string;
-          created_at?: string;
           id?: string;
-          title?: string;
-          updated_at?: string;
+          name?: string;
+          description?: string | null;
+          status?: "draft" | "active" | "paused" | "completed";
+          product_ids?: string[] | null;
           user_id?: string;
+          created_at?: string;
+          started_at?: string | null;
+          ended_at?: string | null;
         };
         Relationships: [
           {
-            foreignKeyName: "fk_posts_user";
+            foreignKeyName: "fk_tests_user";
             columns: ["user_id"];
             isOneToOne: false;
             referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      variants: {
+        Row: {
+          id: string;
+          test_id: string;
+          name: string;
+          weight: number;
+          discount_code: string | null;
+          price_modifier_cents: number | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          test_id: string;
+          name: string;
+          weight?: number;
+          discount_code?: string | null;
+          price_modifier_cents?: number | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          test_id?: string;
+          name?: string;
+          weight?: number;
+          discount_code?: string | null;
+          price_modifier_cents?: number | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "fk_variants_test";
+            columns: ["test_id"];
+            isOneToOne: false;
+            referencedRelation: "tests";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      assignments: {
+        Row: {
+          id: string;
+          test_id: string;
+          variant_id: string;
+          visitor_id: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          test_id: string;
+          variant_id: string;
+          visitor_id: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          test_id?: string;
+          variant_id?: string;
+          visitor_id?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "fk_assignments_test";
+            columns: ["test_id"];
+            isOneToOne: false;
+            referencedRelation: "tests";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "fk_assignments_variant";
+            columns: ["variant_id"];
+            isOneToOne: false;
+            referencedRelation: "variants";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      events: {
+        Row: {
+          id: string;
+          test_id: string;
+          variant_id: string;
+          visitor_id: string;
+          event_type: "view" | "add_to_cart" | "purchase";
+          product_id: string | null;
+          order_id: string | null;
+          revenue_cents: number | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          test_id: string;
+          variant_id: string;
+          visitor_id: string;
+          event_type: "view" | "add_to_cart" | "purchase";
+          product_id?: string | null;
+          order_id?: string | null;
+          revenue_cents?: number | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          test_id?: string;
+          variant_id?: string;
+          visitor_id?: string;
+          event_type?: "view" | "add_to_cart" | "purchase";
+          product_id?: string | null;
+          order_id?: string | null;
+          revenue_cents?: number | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "fk_events_test";
+            columns: ["test_id"];
+            isOneToOne: false;
+            referencedRelation: "tests";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "fk_events_variant";
+            columns: ["variant_id"];
+            isOneToOne: false;
+            referencedRelation: "variants";
             referencedColumns: ["id"];
           },
         ];
@@ -52,6 +189,8 @@ export type Database = {
           full_name: string | null;
           id: string;
           updated_at: string | null;
+          shopify_store: string | null;
+          shopify_access_token: string | null;
         };
         Insert: {
           avatar_url?: string | null;
@@ -60,6 +199,8 @@ export type Database = {
           full_name?: string | null;
           id: string;
           updated_at?: string | null;
+          shopify_store?: string | null;
+          shopify_access_token?: string | null;
         };
         Update: {
           avatar_url?: string | null;
@@ -68,6 +209,8 @@ export type Database = {
           full_name?: string | null;
           id?: string;
           updated_at?: string | null;
+          shopify_store?: string | null;
+          shopify_access_token?: string | null;
         };
         Relationships: [
           {
@@ -81,13 +224,26 @@ export type Database = {
       };
     };
     Views: {
-      [_ in never]: never;
+      test_stats: {
+        Row: {
+          test_id: string;
+          variant_id: string;
+          variant_name: string;
+          visitors: number;
+          conversions: number;
+          revenue_cents: number;
+        };
+      };
     };
     Functions: {
-      [_ in never]: never;
+      refresh_test_stats: {
+        Args: Record<string, never>;
+        Returns: void;
+      };
     };
     Enums: {
-      [_ in never]: never;
+      test_status: "draft" | "active" | "paused" | "completed";
+      event_type: "view" | "add_to_cart" | "purchase";
     };
     CompositeTypes: {
       [_ in never]: never;
@@ -176,3 +332,22 @@ export type Enums<
   : PublicEnumNameOrOptions extends keyof PublicSchema["Enums"]
     ? PublicSchema["Enums"][PublicEnumNameOrOptions]
     : never;
+
+// Convenience type exports
+export type Test = Tables<"tests">;
+export type TestInsert = TablesInsert<"tests">;
+export type TestUpdate = TablesUpdate<"tests">;
+
+export type Variant = Tables<"variants">;
+export type VariantInsert = TablesInsert<"variants">;
+export type VariantUpdate = TablesUpdate<"variants">;
+
+export type Assignment = Tables<"assignments">;
+export type AssignmentInsert = TablesInsert<"assignments">;
+
+export type Event = Tables<"events">;
+export type EventInsert = TablesInsert<"events">;
+
+export type TestStats = Database["public"]["Views"]["test_stats"]["Row"];
+
+export type User = Tables<"users">;

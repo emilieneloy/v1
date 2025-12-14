@@ -1,137 +1,201 @@
-![hero](image.png)
+# Shopify A/B Price Testing
 
+A DIY A/B testing system for Shopify price optimization. Built on Midday v1 starter kit with self-hosted Supabase.
 
-<p align="center">
-	<h1 align="center"><b>Create v1</b></h1>
-<p align="center">
-    An open-source starter kit based on <a href="https://midday.ai">Midday</a>.
-    <br />
-    <br />
-    <a href="https://v1.run"><strong>Website</strong></a> · 
-    <a href="https://github.com/midday-ai/v1/issues"><strong>Issues</strong></a> · 
-    <a href="#whats-included"><strong>What's included</strong></a> ·
-    <a href="#prerequisites"><strong>Prerequisites</strong></a> ·
-    <a href="#getting-started"><strong>Getting Started</strong></a> ·
-    <a href="#how-to-use"><strong>How to use</strong></a>
-  </p>
-</p>
+## Features
 
-Everything you need to build a production ready SaaS, it's a opinionated stack based on learnings from building Midday using the latest Next.js framework, it's a monorepo with a focus on code reuse and best practices that will grow with your business.
+- **Price Testing**: Test different prices for your products
+- **Visitor Bucketing**: Persistent assignment of visitors to test variants
+- **Statistical Analysis**: Two-proportion z-test for conversion rates
+- **Revenue Tracking**: Track revenue per visitor by variant
+- **Shopify Integration**: Auto-apply discounts at checkout
+- **Dark Theme UI**: Oxide-inspired dashboard design
 
-## What's included
+## Tech Stack
 
-[Next.js](https://nextjs.org/) - Framework<br>
-[Turborepo](https://turbo.build) - Build system<br>
-[Biome](https://biomejs.dev) - Linter, formatter<br>
-[TailwindCSS](https://tailwindcss.com/) - Styling<br>
-[Shadcn](https://ui.shadcn.com/) - UI components<br>
-[TypeScript](https://www.typescriptlang.org/) - Type safety<br>
-[Supabase]([https://supabase.com/](https://go.midday.ai/K7GwMoQ)) - Authentication, database, storage<br>
-[Upstash](https://upstash.com/) - Cache and rate limiting<br>
-[React Email](https://react.email/) - Email templates<br>
-[Resend](https://resend.com/) - Email delivery<br>
-[i18n](https://next-international.vercel.app/) - Internationalization<br>
-[Sentry](https://sentry.io/) - Error handling/monitoring<br>
-[Dub](https://dub.sh/) - Sharable links<br>
-[Trigger.dev](https://trigger.dev/) - Background jobs<br>
-[OpenPanel](https://openpanel.dev/) - Analytics<br>
-[Polar](https://polar.sh) - Billing (coming soon)<br>
-[react-safe-action](https://next-safe-action.dev) - Validated Server Actions<br>
-[nuqs](https://nuqs.47ng.com/) - Type-safe search params state manager<br>
-[next-themes](https://next-themes-example.vercel.app/) - Theme manager<br>
+- **Framework**: Next.js 15 + TypeScript
+- **Database**: Self-hosted Supabase (PostgreSQL)
+- **UI**: Tailwind CSS + Shadcn components
+- **Monorepo**: Turborepo
+- **Validation**: Zod
 
-## Directory Structure
+## Project Structure
 
 ```
-.
-├── apps                         # App workspace
-│    ├── api                     # Supabase (API, Auth, Storage, Realtime, Edge Functions)
-│    ├── app                     # App - your product
-│    ├── web                     # Marketing site
-│    └── ...
-├── packages                     # Shared packages between apps
-│    ├── analytics               # OpenPanel analytics
-│    ├── email                   # React email library
-│    ├── jobs                    # Trigger.dev background jobs
-│    ├── kv                      # Upstash rate-limited key-value storage
-│    ├── logger                  # Logger library
-│    ├── supabase                # Supabase - Queries, Mutations, Clients
-│    └── ui                      # Shared UI components (Shadcn)
-├── tooling                      # are the shared configuration that are used by the apps and packages
-│    └── typescript              # Shared TypeScript configuration
-├── .cursorrules                 # Cursor rules specific to this project
-├── biome.json                   # Biome configuration
-├── turbo.json                   # Turbo configuration
-├── LICENSE
-└── README.md
+shopify-ab-testing/
+├── apps/
+│   └── app/                     # Next.js dashboard
+│       └── src/
+│           ├── app/
+│           │   ├── api/
+│           │   │   ├── bucket/[testId]/   # Visitor bucketing
+│           │   │   ├── track/             # Event tracking
+│           │   │   ├── tests/             # Test CRUD
+│           │   │   └── webhooks/shopify/  # Order attribution
+│           │   └── [locale]/(dashboard)/
+│           │       ├── tests/             # Test management pages
+│           │       └── page.tsx           # Dashboard
+│           └── components/
+│               └── tests/                 # Test components
+├── packages/
+│   ├── lib/                     # A/B testing utilities
+│   │   └── src/
+│   │       ├── stats.ts         # Statistical calculations
+│   │       ├── schemas.ts       # Zod validation schemas
+│   │       └── shopify.ts       # Shopify Admin API client
+│   ├── supabase/                # Database package
+│   │   └── src/
+│   │       ├── queries/         # DB query functions
+│   │       └── types/           # TypeScript types
+│   └── ui/                      # UI components
+├── supabase/                    # Self-hosted Supabase
+│   ├── docker-compose.yml
+│   ├── kong.yml
+│   └── migrations/
+│       └── 20241214000000_ab_testing.sql
+└── shopify/                     # Theme integration
+    ├── snippets/ab-test.liquid
+    └── assets/ab-test.js
 ```
 
-## Prerequisites
+## Quick Start
 
-Bun<br>
-Docker<br>
-Upstash<br>
-Dub<br>
-Trigger.dev<br>
-Resend<br>
-Supabase<br>
-Sentry<br>
-OpenPanel<br>
-
-## Getting Started
-
-Clone this repo locally with the following command:
+### 1. Start Supabase
 
 ```bash
-bunx degit midday-ai/v1 v1
+cd supabase
+cp .env.example .env
+# Edit .env with your secrets (generate JWT keys)
+docker-compose up -d
 ```
 
-1. Install dependencies using bun:
+Supabase will be available at:
+- API: http://localhost:8000
+- Studio: http://localhost:3001
 
-```sh
-bun i
-```
+### 2. Start the App
 
-2. Copy `.env.example` to `.env` and update the variables.
+```bash
+# Install dependencies
+bun install
 
-```sh
-# Copy .env.example to .env for each app
-cp apps/api/.env.example apps/api/.env
+# Copy environment file
 cp apps/app/.env.example apps/app/.env
-cp apps/web/.env.example apps/web/.env
+# Edit with your Supabase and Shopify credentials
+
+# Start development server
+bun dev
 ```
 
-4. Start the development server from either bun or turbo:
+Dashboard: http://localhost:3000
 
-```ts
-bun dev // starts everything in development mode (web, app, api, email)
-bun dev:web // starts the web app in development mode
-bun dev:app // starts the app in development mode
-bun dev:api // starts the api in development mode
-bun dev:email // starts the email app in development mode
+### 3. Install Shopify Theme Snippet
 
-// Database
-bun migrate // run migrations
-bun seed // run seed
+Copy the files from `shopify/` to your Shopify theme:
+- `snippets/ab-test.liquid` -> Theme snippets
+- `assets/ab-test.js` -> Theme assets
+
+Add to `theme.liquid` before `</head>`:
+```liquid
+{% render 'ab-test' %}
 ```
 
-## How to use
-This boilerplate is inspired by our work on Midday, and it's designed to serve as a reference for real-world apps. Feel free to dive into the code and see how we've tackled various features. Whether you're looking to understand authentication flows, database interactions, or UI components, you'll find practical, battle-tested implementations throughout the codebase. It's not just a starting point; it's a learning resource that can help you build your own applications.
+### 4. Set Up Shopify Webhook
 
-With this, you have a great starting point for your own project.
+In Shopify Admin:
+1. Settings > Notifications > Webhooks
+2. Create webhook for `orders/paid`
+3. URL: `https://your-domain.com/api/webhooks/shopify`
 
-## Deploy to Vercel
+## Environment Variables
 
-Vercel deployment will guide you through creating a Supabase account and project.
+### Supabase (supabase/.env)
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fmidday-ai%2Fv1&env=RESEND_API_KEY,UPSTASH_REDIS_REST_URL,UPSTASH_REDIS_REST_TOKEN,SENTRY_AUTH_TOKEN,NEXT_PUBLIC_SENTRY_DSN,SENTRY_ORG,SENTRY_PROJECT,DUB_API_KEY,NEXT_PUBLIC_OPENPANEL_CLIENT_ID,OPENPANEL_SECRET_KEY&project-name=create-v1&repository-name=create-v1&redirect-url=https%3A%2F%2Fv1.run&demo-title=Create%20v1&demo-description=An%20open-source%20starter%20kit%20based%20on%20Midday.&demo-url=https%3A%2F%2Fv1.run&demo-image=https%3A%2F%2Fv1.run%2Fopengraph-image.png&integration-ids=oac_VqOgBHqhEoFTPzGkPd7L0iH6)
+```bash
+POSTGRES_PASSWORD=your-super-secret-password
+JWT_SECRET=your-super-secret-jwt-token-with-at-least-32-characters
+ANON_KEY=eyJ...  # Generate from JWT secret
+SERVICE_ROLE_KEY=eyJ...  # Generate from JWT secret
+```
 
-## Recognition
+### App (apps/app/.env)
 
-<a href="https://news.ycombinator.com/item?id=41408929">
-  <img
-    style="width: 250px; height: 54px;" width="250" height="54"
-    alt="Featured on Hacker News"
-    src="https://hackernews-badge.vercel.app/api?id=41408929"
-  />
-</a>
+```bash
+NEXT_PUBLIC_SUPABASE_URL=http://localhost:8000
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_KEY=your-service-role-key
+SHOPIFY_STORE=your-store.myshopify.com
+SHOPIFY_ACCESS_TOKEN=shpat_xxxxx
+SHOPIFY_WEBHOOK_SECRET=your-webhook-secret
+```
+
+## API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/bucket/{testId}` | Get/assign visitor to variant |
+| POST | `/api/track` | Record events (view, cart, purchase) |
+| GET | `/api/tests` | List all tests |
+| POST | `/api/tests` | Create new test |
+| GET | `/api/tests/{id}` | Get test with results |
+| PATCH | `/api/tests/{id}` | Update test (status, etc.) |
+| DELETE | `/api/tests/{id}` | Delete test |
+| POST | `/api/webhooks/shopify` | Handle order webhooks |
+
+## How It Works
+
+1. **Visitor arrives** on your Shopify store
+2. **Theme snippet** calls `/api/bucket/{testId}` to get variant assignment
+3. **Price is modified** based on variant's `price_modifier_cents`
+4. **Discount is applied** automatically at checkout
+5. **Events tracked** (view, add_to_cart)
+6. **Purchase webhook** attributes revenue to variant
+7. **Dashboard shows** statistical analysis
+
+## Statistical Analysis
+
+The system uses:
+- **Two-proportion z-test** for conversion rate comparison
+- **Welch's t-test** for revenue per visitor comparison
+- **95% confidence** level (configurable)
+- **Sample size recommendations** for reaching significance
+
+## Development
+
+```bash
+# Run all services
+bun dev
+
+# Run specific app
+bun dev --filter=app
+
+# Type check
+bun typecheck
+
+# Lint
+bun lint
+```
+
+## Production Deployment
+
+1. Deploy Supabase (Docker or managed)
+2. Deploy Next.js app (Vercel, Railway, etc.)
+3. Update environment variables
+4. Configure Shopify webhook with production URL
+
+## Cost Comparison
+
+| Solution | Monthly Cost |
+|----------|-------------|
+| This DIY | $10-20 hosting |
+| Trident AB | $19.99 |
+| Split A/B | $19-49 |
+| Intelligems | $49-999 |
+
+## Based On
+
+This project is built on [Midday v1](https://github.com/midday-ai/v1), an open-source starter kit.
+
+## License
+
+MIT

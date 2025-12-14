@@ -1,0 +1,25 @@
+{
+  "name": "@v1/lib",
+  "main": "./src/index.ts",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "clean": "rm -rf .turbo node_modules",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "typecheck": "tsc --noEmit"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./stats": "./src/stats.ts",
+    "./schemas": "./src/schemas.ts",
+    "./shopify": "./src/shopify.ts"
+  },
+  "dependencies": {
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.10",
+    "typescript": "^5.5.3"
+  }
+}

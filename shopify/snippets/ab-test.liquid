@@ -1,0 +1,52 @@
+{% comment %}
+  A/B Testing Snippet for Shopify
+
+  Include this snippet in your theme.liquid file before </head>:
+  {% render 'ab-test' %}
+
+  Or include in product templates for product-specific testing:
+  {% render 'ab-test', product: product %}
+
+  Configuration is done via the A/B Testing Dashboard.
+{% endcomment %}
+
+{% comment %} Configure your A/B Testing API URL {% endcomment %}
+{%- assign ab_api_url = 'https://your-ab-testing-app.com' -%}
+
+{% comment %} Get active test ID from metafields or settings {% endcomment %}
+{%- assign ab_test_id = shop.metafields.ab_testing.active_test_id -%}
+
+{% comment %} Only run if we have an active test {% endcomment %}
+{%- if ab_test_id != blank -%}
+<script>
+  window.ABTest = window.ABTest || {
+    apiUrl: '{{ ab_api_url }}',
+    testId: '{{ ab_test_id }}',
+    productId: {% if product %}'{{ product.id }}'{% else %}null{% endif %},
+    currency: '{{ shop.currency }}',
+    ready: false,
+    variant: null,
+    callbacks: []
+  };
+
+  // Load the A/B testing script
+  (function() {
+    var script = document.createElement('script');
+    script.src = '{{ ab_api_url }}/ab-test.js';
+    script.async = true;
+    script.onload = function() {
+      ABTest.init();
+    };
+    document.head.appendChild(script);
+  })();
+</script>
+{% endif %}
+
+{% comment %}
+  Manual price display helper for themes that need it.
+  Use in product templates:
+
+  <span class="ab-price" data-product-id="{{ product.id }}" data-original-price="{{ product.price }}">
+    {{ product.price | money }}
+  </span>
+{% endcomment %}
