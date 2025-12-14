@@ -176,6 +176,30 @@ bun typecheck
 bun lint
 ```
 
+## Testing
+
+```bash
+# Run all tests
+bun test
+
+# Run lib package tests only
+cd packages/lib && bun test
+
+# Run tests with coverage
+cd packages/lib && bun test:coverage
+```
+
+The `@v1/lib` package includes comprehensive tests for:
+- Statistical calculations (z-test, t-test, confidence intervals)
+- Sample size calculations
+- Zod validation schemas
+
+## Documentation
+
+- [API Reference](./docs/API.md) - Endpoint documentation
+- [Setup Guide](./docs/SETUP.md) - Development environment setup
+- [Library Docs](./packages/lib/README.md) - Statistical functions
+
 ## Production Deployment
 
 1. Deploy Supabase (Docker or managed)
