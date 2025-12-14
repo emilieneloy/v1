@@ -14,6 +14,11 @@ export async function middleware(request: NextRequest) {
     I18nMiddleware(request),
   );
 
+  // Skip auth check in development mode
+  if (process.env.NODE_ENV === "development") {
+    return response;
+  }
+
   if (!request.nextUrl.pathname.endsWith("/login") && !user) {
     return NextResponse.redirect(new URL("/login", request.url));
   }

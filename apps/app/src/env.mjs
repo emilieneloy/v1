@@ -10,16 +10,22 @@ export const env = createEnv({
     PORT: z.coerce.number().default(3000),
   },
   server: {
-    OPENPANEL_SECRET_KEY: z.string(),
-    RESEND_API_KEY: z.string(),
+    OPENPANEL_SECRET_KEY: z.string().optional(),
+    RESEND_API_KEY: z.string().optional(),
     SUPABASE_SERVICE_KEY: z.string(),
-    UPSTASH_REDIS_REST_TOKEN: z.string(),
-    UPSTASH_REDIS_REST_URL: z.string(),
+    UPSTASH_REDIS_REST_TOKEN: z.string().optional(),
+    UPSTASH_REDIS_REST_URL: z.string().optional(),
+    // Shopify OAuth
+    SHOPIFY_CLIENT_ID: z.string().optional(),
+    SHOPIFY_CLIENT_SECRET: z.string().optional(),
+    SHOPIFY_SCOPES: z.string().optional(),
+    SHOPIFY_WEBHOOK_SECRET: z.string().optional(),
   },
   client: {
-    NEXT_PUBLIC_OPENPANEL_CLIENT_ID: z.string(),
+    NEXT_PUBLIC_OPENPANEL_CLIENT_ID: z.string().optional(),
     NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string(),
     NEXT_PUBLIC_SUPABASE_URL: z.string(),
+    NEXT_PUBLIC_APP_URL: z.string().optional(),
   },
   runtimeEnv: {
     NEXT_PUBLIC_OPENPANEL_CLIENT_ID:
@@ -27,6 +33,7 @@ export const env = createEnv({
     NEXT_PUBLIC_SENTRY_DSN: process.env.NEXT_PUBLIC_SENTRY_DSN,
     NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
+    NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
     OPENPANEL_SECRET_KEY: process.env.OPENPANEL_SECRET_KEY,
     PORT: process.env.PORT,
     RESEND_API_KEY: process.env.RESEND_API_KEY,
@@ -34,6 +41,11 @@ export const env = createEnv({
     UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
     UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
     VERCEL_URL: process.env.VERCEL_URL,
+    // Shopify
+    SHOPIFY_CLIENT_ID: process.env.SHOPIFY_CLIENT_ID,
+    SHOPIFY_CLIENT_SECRET: process.env.SHOPIFY_CLIENT_SECRET,
+    SHOPIFY_SCOPES: process.env.SHOPIFY_SCOPES,
+    SHOPIFY_WEBHOOK_SECRET: process.env.SHOPIFY_WEBHOOK_SECRET,
   },
   skipValidation: !!process.env.CI || !!process.env.SKIP_ENV_VALIDATION,
 });

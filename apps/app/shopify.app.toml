@@ -1,0 +1,26 @@
+# Shopify App Configuration
+# See: https://shopify.dev/docs/apps/build/cli-for-apps/app-configuration
+
+name = "AB Price Testing"
+client_id = "YOUR_CLIENT_ID"
+application_url = "https://localhost:3002"
+embedded = false
+
+# API access scopes
+scopes = "read_products,read_orders"
+
+[auth]
+redirect_urls = [
+  "https://localhost:3002/api/auth/shopify/callback"
+]
+
+[webhooks]
+api_version = "2024-10"
+
+[[webhooks.subscriptions]]
+topics = ["orders/paid"]
+uri = "/api/webhooks/shopify"
+
+[build]
+automatically_update_urls_on_dev = true
+dev_store_url = "YOUR_DEV_STORE.myshopify.com"

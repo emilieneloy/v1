@@ -1,0 +1,45 @@
+{% comment %}
+  AB Price Testing - App Embed Block
+
+  This block is automatically injected into the theme when merchants
+  enable the app embed in Theme Settings > App embeds.
+
+  It loads the AB testing script which handles:
+  - Visitor identification
+  - Variant assignment
+  - Price display modification
+  - Event tracking
+{% endcomment %}
+
+<script>
+  window.ABTestConfig = {
+    apiUrl: {{ block.settings.api_url | json }},
+    shopDomain: {{ shop.permanent_domain | json }},
+    {% if product %}
+    productId: {{ product.id | json }},
+    {% endif %}
+    currency: {{ shop.currency | json }}
+  };
+</script>
+
+<script src="{{ 'ab-test.js' | asset_url }}" defer></script>
+
+{% schema %}
+{
+  "name": "AB Price Testing",
+  "target": "body",
+  "javascript": "ab-test.js",
+  "enabled_on": {
+    "groups": ["*"]
+  },
+  "settings": [
+    {
+      "type": "text",
+      "id": "api_url",
+      "label": "API URL",
+      "info": "The URL of your AB testing application (e.g., https://your-app.com)",
+      "placeholder": "https://your-ab-testing-app.com"
+    }
+  ]
+}
+{% endschema %}

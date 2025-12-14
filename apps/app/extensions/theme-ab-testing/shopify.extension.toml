@@ -1,0 +1,9 @@
+# Theme App Extension Configuration
+# See: https://shopify.dev/docs/apps/build/online-store/theme-app-extensions/configuration
+
+api_version = "2024-10"
+
+[[extensions]]
+type = "theme"
+name = "AB Price Testing"
+handle = "ab-price-testing"

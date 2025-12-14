@@ -3,6 +3,16 @@ import { getUser } from "@v1/supabase/queries";
 import { redirect } from "next/navigation";
 import { SignOut } from "@/components/sign-out";
 
+// Mock user for development mode
+const DEV_USER = {
+  id: "dev-user-00000000-0000-0000-0000-000000000000",
+  email: "dev@localhost",
+  app_metadata: {},
+  user_metadata: {},
+  aud: "authenticated",
+  created_at: new Date().toISOString(),
+};
+
 export default async function DashboardLayout({
   children,
 }: {
@@ -10,7 +20,10 @@ export default async function DashboardLayout({
 }) {
   const { data } = await getUser();
 
-  if (!data?.user) {
+  // Use mock user in development mode
+  const user = data?.user ?? (process.env.NODE_ENV === "development" ? DEV_USER : null);
+
+  if (!user) {
     redirect("/login");
   }
 
@@ -46,7 +59,7 @@ export default async function DashboardLayout({
 
             <div className="flex items-center gap-4">
               <span className="text-sm text-zinc-500">
-                {data.user.email}
+                {user.email}
               </span>
               <SignOut />
             </div>
