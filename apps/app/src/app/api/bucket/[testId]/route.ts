@@ -40,7 +40,7 @@ export async function GET(
     const validation = bucketRequestSchema.safeParse({
       test_id: testId,
       visitor_id: visitorId,
-      product_id: productId,
+      product_id: productId ?? undefined, // Convert null to undefined for Zod
     });
 
     if (!validation.success) {

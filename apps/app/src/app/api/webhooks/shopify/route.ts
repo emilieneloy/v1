@@ -59,7 +59,7 @@ export async function POST(request: Request) {
     const validation = shopifyOrderWebhookSchema.safeParse(body);
 
     if (!validation.success) {
-      console.error("Invalid webhook payload:", validation.error);
+      console.error("Invalid webhook payload:", validation.error.flatten());
       return NextResponse.json(
         { error: "Invalid payload" },
         { status: 400 }

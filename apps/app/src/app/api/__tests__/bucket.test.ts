@@ -1,17 +1,22 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-// Create chainable mock that returns itself
+// Create chainable mock that properly simulates Supabase query chain
 const createChainableMock = () => {
-  let resolvedValue: unknown = null;
+  let singleResults: unknown[] = [];
+  let singleIndex = 0;
 
   const mock = {
-    _setResolved: (val: unknown) => {
-      resolvedValue = val;
+    _setSingleResults: (results: unknown[]) => {
+      singleResults = results;
+      singleIndex = 0;
     },
     select: vi.fn(() => mock),
     eq: vi.fn(() => mock),
-    insert: vi.fn(() => ({ error: null })),
-    single: vi.fn(() => Promise.resolve(resolvedValue)),
+    single: vi.fn(() => {
+      const result = singleResults[singleIndex] || { data: null, error: null };
+      singleIndex++;
+      return Promise.resolve(result);
+    }),
   };
   return mock;
 };
@@ -22,8 +27,11 @@ let insertMock = vi.fn(() => ({ error: null }));
 vi.mock("@v1/supabase/server", () => ({
   createClient: vi.fn(() => ({
     from: vi.fn((table: string) => {
-      if (table === "events" || insertMock._table === table) {
-        return { insert: insertMock };
+      if (table === "assignments") {
+        return {
+          select: vi.fn(() => chainableMock),
+          insert: insertMock,
+        };
       }
       return chainableMock;
     }),
@@ -36,6 +44,23 @@ import { GET, OPTIONS } from "../bucket/[testId]/route";
 describe("Bucket API", () => {
   const validTestId = "550e8400-e29b-41d4-a716-446655440000";
   const validVariantId = "660e8400-e29b-41d4-a716-446655440001";
+
+  const mockVariants = [
+    {
+      id: validVariantId,
+      name: "Control",
+      weight: 50,
+      discount_code: null,
+      price_modifier_cents: 0,
+    },
+    {
+      id: "770e8400-e29b-41d4-a716-446655440002",
+      name: "Test Variant",
+      weight: 50,
+      discount_code: "SAVE10",
+      price_modifier_cents: -500,
+    },
+  ];
 
   beforeEach(() => {
     chainableMock = createChainableMock();
@@ -59,7 +84,7 @@ describe("Bucket API", () => {
     });
   });
 
-  describe("GET", () => {
+  describe("GET - Input Validation", () => {
     const createRequest = (testId: string, params: Record<string, string>) => {
       const searchParams = new URLSearchParams(params);
       const url = `http://localhost/api/bucket/${testId}?${searchParams}`;
@@ -88,146 +113,332 @@ describe("Bucket API", () => {
       expect(data.error).toBe("Invalid request");
     });
 
-    it("includes CORS headers in all responses", async () => {
+    it("includes CORS headers in error responses", async () => {
       const request = createRequest(validTestId, {});
       const response = await GET(request, { params: createParams(validTestId) });
 
       expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
     });
   });
-});
 
-describe("Weighted Selection Algorithm", () => {
-  it("distributes assignments according to weights over many runs", () => {
-    // Test the weighted selection logic directly
-    const variants = [
-      { id: "a", weight: 70 },
-      { id: "b", weight: 30 },
-    ];
+  describe("GET - Test Lookup", () => {
+    const createRequest = (testId: string, visitorId: string) => {
+      const url = `http://localhost/api/bucket/${testId}?visitor_id=${visitorId}`;
+      return new Request(url, { method: "GET" });
+    };
 
-    const results: Record<string, number> = { a: 0, b: 0 };
-    const iterations = 10000;
+    const createParams = (testId: string) => Promise.resolve({ testId });
 
-    for (let i = 0; i < iterations; i++) {
-      const totalWeight = variants.reduce((sum, v) => sum + v.weight, 0);
-      const random = Math.random() * totalWeight;
+    it("returns 404 when test is not found", async () => {
+      chainableMock._setSingleResults([
+        { data: null, error: { code: "PGRST116", message: "not found" } },
+      ]);
 
-      let cumulative = 0;
-      let selected = variants[0];
-      for (const variant of variants) {
-        cumulative += variant.weight;
-        if (random <= cumulative) {
-          selected = variant;
-          break;
-        }
-      }
-      results[selected.id]++;
-    }
+      const request = createRequest(validTestId, "visitor-123");
+      const response = await GET(request, { params: createParams(validTestId) });
 
-    // Allow 5% tolerance
-    const expectedA = iterations * 0.7;
-    const expectedB = iterations * 0.3;
-    const tolerance = iterations * 0.05;
+      expect(response.status).toBe(404);
+      const data = await response.json();
+      expect(data.error).toBe("Test not found");
+    });
 
-    expect(results.a).toBeGreaterThan(expectedA - tolerance);
-    expect(results.a).toBeLessThan(expectedA + tolerance);
-    expect(results.b).toBeGreaterThan(expectedB - tolerance);
-    expect(results.b).toBeLessThan(expectedB + tolerance);
+    it("returns 400 when test is not active (paused)", async () => {
+      chainableMock._setSingleResults([
+        {
+          data: {
+            id: validTestId,
+            status: "paused",
+            product_ids: ["prod-1"],
+            variants: mockVariants,
+          },
+          error: null,
+        },
+      ]);
+
+      const request = createRequest(validTestId, "visitor-123");
+      const response = await GET(request, { params: createParams(validTestId) });
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error).toBe("Test is not active");
+      expect(data.status).toBe("paused");
+    });
+
+    it("returns 400 when test is draft", async () => {
+      chainableMock._setSingleResults([
+        {
+          data: {
+            id: validTestId,
+            status: "draft",
+            product_ids: ["prod-1"],
+            variants: mockVariants,
+          },
+          error: null,
+        },
+      ]);
+
+      const request = createRequest(validTestId, "visitor-123");
+      const response = await GET(request, { params: createParams(validTestId) });
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error).toBe("Test is not active");
+    });
+
+    it("returns 400 when test has no variants", async () => {
+      chainableMock._setSingleResults([
+        // Test lookup
+        {
+          data: {
+            id: validTestId,
+            status: "active",
+            product_ids: ["prod-1"],
+            variants: [], // Empty variants
+          },
+          error: null,
+        },
+        // No existing assignment
+        { data: null, error: null },
+      ]);
+
+      const request = createRequest(validTestId, "visitor-123");
+      const response = await GET(request, { params: createParams(validTestId) });
+
+      expect(response.status).toBe(400);
+      const data = await response.json();
+      expect(data.error).toBe("No variants configured for this test");
+    });
   });
 
-  it("handles single variant with 100% weight", () => {
-    const variants = [{ id: "only", weight: 100 }];
+  describe("GET - Existing Assignment", () => {
+    const createRequest = (testId: string, visitorId: string) => {
+      const url = `http://localhost/api/bucket/${testId}?visitor_id=${visitorId}`;
+      return new Request(url, { method: "GET" });
+    };
 
-    const totalWeight = variants.reduce((sum, v) => sum + v.weight, 0);
-    const random = Math.random() * totalWeight;
+    const createParams = (testId: string) => Promise.resolve({ testId });
 
-    let cumulative = 0;
-    let selected = variants[0];
-    for (const variant of variants) {
-      cumulative += variant.weight;
-      if (random <= cumulative) {
-        selected = variant;
-        break;
-      }
-    }
+    it("returns existing assignment for returning visitor", async () => {
+      const existingVariant = mockVariants[0];
 
-    expect(selected.id).toBe("only");
+      chainableMock._setSingleResults([
+        // Test lookup
+        {
+          data: {
+            id: validTestId,
+            status: "active",
+            product_ids: ["prod-1"],
+            variants: mockVariants,
+          },
+          error: null,
+        },
+        // Existing assignment found
+        {
+          data: {
+            variant_id: existingVariant.id,
+            variants: existingVariant,
+          },
+          error: null,
+        },
+      ]);
+
+      const request = createRequest(validTestId, "returning-visitor");
+      const response = await GET(request, { params: createParams(validTestId) });
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.variant_id).toBe(existingVariant.id);
+      expect(data.variant_name).toBe("Control");
+      expect(data.is_new_assignment).toBe(false);
+      expect(data.discount_code).toBeNull();
+      expect(data.price_modifier_cents).toBe(0);
+    });
+
+    it("returns existing assignment with discount code", async () => {
+      const discountVariant = mockVariants[1];
+
+      chainableMock._setSingleResults([
+        // Test lookup
+        {
+          data: {
+            id: validTestId,
+            status: "active",
+            product_ids: ["prod-1"],
+            variants: mockVariants,
+          },
+          error: null,
+        },
+        // Existing assignment found
+        {
+          data: {
+            variant_id: discountVariant.id,
+            variants: discountVariant,
+          },
+          error: null,
+        },
+      ]);
+
+      const request = createRequest(validTestId, "discount-visitor");
+      const response = await GET(request, { params: createParams(validTestId) });
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.variant_name).toBe("Test Variant");
+      expect(data.discount_code).toBe("SAVE10");
+      expect(data.price_modifier_cents).toBe(-500);
+      expect(data.is_new_assignment).toBe(false);
+    });
   });
 
-  it("handles unequal three-way split", () => {
-    const variants = [
-      { id: "a", weight: 50 },
-      { id: "b", weight: 30 },
-      { id: "c", weight: 20 },
-    ];
+  describe("GET - New Assignment", () => {
+    const createRequest = (testId: string, visitorId: string) => {
+      const url = `http://localhost/api/bucket/${testId}?visitor_id=${visitorId}`;
+      return new Request(url, { method: "GET" });
+    };
 
-    const results: Record<string, number> = { a: 0, b: 0, c: 0 };
-    const iterations = 10000;
+    const createParams = (testId: string) => Promise.resolve({ testId });
 
-    for (let i = 0; i < iterations; i++) {
-      const totalWeight = variants.reduce((sum, v) => sum + v.weight, 0);
-      const random = Math.random() * totalWeight;
+    it("creates new assignment for new visitor", async () => {
+      chainableMock._setSingleResults([
+        // Test lookup
+        {
+          data: {
+            id: validTestId,
+            status: "active",
+            product_ids: ["prod-1"],
+            variants: mockVariants,
+          },
+          error: null,
+        },
+        // No existing assignment
+        { data: null, error: null },
+      ]);
 
-      let cumulative = 0;
-      let selected = variants[0];
-      for (const variant of variants) {
-        cumulative += variant.weight;
-        if (random <= cumulative) {
-          selected = variant;
-          break;
-        }
-      }
-      results[selected.id]++;
-    }
+      insertMock = vi.fn(() => ({ error: null }));
 
-    const tolerance = iterations * 0.05;
-    expect(results.a).toBeGreaterThan(5000 - tolerance);
-    expect(results.a).toBeLessThan(5000 + tolerance);
-    expect(results.b).toBeGreaterThan(3000 - tolerance);
-    expect(results.b).toBeLessThan(3000 + tolerance);
-    expect(results.c).toBeGreaterThan(2000 - tolerance);
-    expect(results.c).toBeLessThan(2000 + tolerance);
+      const request = createRequest(validTestId, "new-visitor");
+      const response = await GET(request, { params: createParams(validTestId) });
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.is_new_assignment).toBe(true);
+      // Should be one of the variants
+      expect([mockVariants[0].id, mockVariants[1].id]).toContain(data.variant_id);
+      expect(["Control", "Test Variant"]).toContain(data.variant_name);
+    });
+
+    it("handles race condition with duplicate key error", async () => {
+      const existingVariant = mockVariants[0];
+
+      chainableMock._setSingleResults([
+        // Test lookup
+        {
+          data: {
+            id: validTestId,
+            status: "active",
+            product_ids: ["prod-1"],
+            variants: mockVariants,
+          },
+          error: null,
+        },
+        // No existing assignment (first check)
+        { data: null, error: null },
+        // Retry after duplicate - now found
+        {
+          data: {
+            variant_id: existingVariant.id,
+            variants: existingVariant,
+          },
+          error: null,
+        },
+      ]);
+
+      // Simulate duplicate key error
+      insertMock = vi.fn(() => ({
+        error: { code: "23505", message: "duplicate key" },
+      }));
+
+      const request = createRequest(validTestId, "race-condition-visitor");
+      const response = await GET(request, { params: createParams(validTestId) });
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.is_new_assignment).toBe(false);
+      expect(data.variant_id).toBe(existingVariant.id);
+    });
+
+    it("returns 500 on non-duplicate insert error", async () => {
+      chainableMock._setSingleResults([
+        // Test lookup
+        {
+          data: {
+            id: validTestId,
+            status: "active",
+            product_ids: ["prod-1"],
+            variants: mockVariants,
+          },
+          error: null,
+        },
+        // No existing assignment
+        { data: null, error: null },
+      ]);
+
+      // Simulate database error
+      insertMock = vi.fn(() => ({
+        error: { code: "OTHER", message: "database connection failed" },
+      }));
+
+      const request = createRequest(validTestId, "error-visitor");
+      const response = await GET(request, { params: createParams(validTestId) });
+
+      expect(response.status).toBe(500);
+      const data = await response.json();
+      expect(data.error).toBe("Failed to create assignment");
+    });
   });
-});
 
-describe("Bucket API Input Validation", () => {
-  it("validates UUID format for test_id", () => {
-    const validUUIDs = [
-      "550e8400-e29b-41d4-a716-446655440000",
-      "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
-    ];
+  describe("GET - Single Variant Test", () => {
+    const createRequest = (testId: string, visitorId: string) => {
+      const url = `http://localhost/api/bucket/${testId}?visitor_id=${visitorId}`;
+      return new Request(url, { method: "GET" });
+    };
 
-    const invalidUUIDs = [
-      "not-a-uuid",
-      "12345",
-      "",
-      "550e8400-e29b-41d4-a716",
-    ];
+    const createParams = (testId: string) => Promise.resolve({ testId });
 
-    // UUID regex pattern
-    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    it("always assigns to single variant with 100% weight", async () => {
+      const singleVariant = {
+        id: "single-variant-id",
+        name: "Only Option",
+        weight: 100,
+        discount_code: "ONLY",
+        price_modifier_cents: -100,
+      };
 
-    for (const uuid of validUUIDs) {
-      expect(uuidPattern.test(uuid)).toBe(true);
-    }
+      chainableMock._setSingleResults([
+        // Test lookup
+        {
+          data: {
+            id: validTestId,
+            status: "active",
+            product_ids: ["prod-1"],
+            variants: [singleVariant],
+          },
+          error: null,
+        },
+        // No existing assignment
+        { data: null, error: null },
+      ]);
 
-    for (const uuid of invalidUUIDs) {
-      expect(uuidPattern.test(uuid)).toBe(false);
-    }
-  });
+      insertMock = vi.fn(() => ({ error: null }));
 
-  it("requires non-empty visitor_id", () => {
-    const validVisitorIds = ["visitor-123", "abc", "1"];
-    const invalidVisitorIds = ["", null, undefined];
+      const request = createRequest(validTestId, "single-test-visitor");
+      const response = await GET(request, { params: createParams(validTestId) });
 
-    for (const id of validVisitorIds) {
-      expect(id && id.length > 0).toBe(true);
-    }
-
-    for (const id of invalidVisitorIds) {
-      // Check that invalid IDs are falsy or empty
-      const isInvalid = !id || (typeof id === "string" && id.length === 0);
-      expect(isInvalid).toBe(true);
-    }
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.variant_id).toBe(singleVariant.id);
+      expect(data.variant_name).toBe("Only Option");
+      expect(data.discount_code).toBe("ONLY");
+    });
   });
 });

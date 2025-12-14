@@ -323,10 +323,104 @@ describe("Shopify Webhook API", () => {
       const data = await response.json();
       expect(data.attributed).toBe(false);
     });
+
+    it("does not attribute when variant lookup fails", async () => {
+      const orderWithDiscount = {
+        ...validOrder,
+        discount_codes: [
+          { code: "ABTEST10", amount: "10.00", type: "fixed_amount" },
+        ],
+      };
+
+      // Variant lookup fails (discount code not found in database)
+      chainableMock._setSingleResults([
+        { data: null, error: { code: "PGRST116", message: "not found" } },
+      ]);
+
+      const request = createRequest(orderWithDiscount);
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.attributed).toBe(false);
+    });
+
+    it("uses order_id as visitor_id when no customer in order", async () => {
+      const orderWithoutCustomer = {
+        ...validOrder,
+        customer: undefined,
+        discount_codes: [
+          { code: "ABTEST10", amount: "10.00", type: "fixed_amount" },
+        ],
+      };
+
+      // Variant lookup succeeds
+      chainableMock._setSingleResults([
+        {
+          data: {
+            id: "variant-uuid-456",
+            test_id: "test-uuid-123",
+            tests: { id: "test-uuid-123", status: "active" },
+          },
+          error: null,
+        },
+      ]);
+
+      let capturedData: Record<string, unknown> | null = null;
+      insertMock = vi.fn((data) => {
+        capturedData = data;
+        return { error: null };
+      });
+
+      const request = createRequest(orderWithoutCustomer);
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.attributed).toBe(true);
+
+      // Should use order_${order.id} as visitor_id
+      expect(capturedData).not.toBeNull();
+      expect(capturedData!.visitor_id).toBe(`order_${validOrder.id}`);
+    });
+
+    it("uses customer_id as visitor_id when customer exists", async () => {
+      const orderWithCustomer = {
+        ...validOrder,
+        discount_codes: [
+          { code: "ABTEST10", amount: "10.00", type: "fixed_amount" },
+        ],
+      };
+
+      // Variant lookup succeeds
+      chainableMock._setSingleResults([
+        {
+          data: {
+            id: "variant-uuid-456",
+            test_id: "test-uuid-123",
+            tests: { id: "test-uuid-123", status: "active" },
+          },
+          error: null,
+        },
+      ]);
+
+      let capturedData: Record<string, unknown> | null = null;
+      insertMock = vi.fn((data) => {
+        capturedData = data;
+        return { error: null };
+      });
+
+      const request = createRequest(orderWithCustomer);
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      expect(capturedData).not.toBeNull();
+      expect(capturedData!.visitor_id).toBe(`customer_${validOrder.customer.id}`);
+    });
   });
 
   describe("Revenue Calculation", () => {
-    it("correctly converts total_price to cents", async () => {
+    it("correctly converts total_price to cents and records all fields", async () => {
       const orderWithAttribution = {
         ...validOrder,
         total_price: "123.45",
@@ -352,8 +446,48 @@ describe("Shopify Webhook API", () => {
       const request = createRequest(orderWithAttribution);
       await POST(request);
 
+      // Verify all inserted fields
       expect(capturedData).not.toBeNull();
-      expect(capturedData!.revenue_cents).toBe(12345);
+      expect(capturedData).toMatchObject({
+        test_id: "test-uuid-123",
+        variant_id: "variant-uuid-456",
+        visitor_id: "visitor-789",
+        event_type: "purchase",
+        order_id: orderWithAttribution.id.toString(),
+        revenue_cents: 12345,
+        product_id: orderWithAttribution.line_items[0].product_id.toString(),
+      });
+    });
+
+    it("handles orders without line items", async () => {
+      const orderNoLineItems = {
+        ...validOrder,
+        total_price: "50.00",
+        line_items: [],
+        note_attributes: [
+          { name: "ab_test_id", value: "test-uuid-123" },
+          { name: "ab_variant_id", value: "variant-uuid-456" },
+          { name: "ab_visitor_id", value: "visitor-789" },
+        ],
+      };
+
+      chainableMock._setSingleResults([
+        { data: { id: "test-uuid-123", status: "active" }, error: null },
+      ]);
+
+      let capturedData: Record<string, unknown> | null = null;
+      insertMock = vi.fn((data) => {
+        capturedData = data;
+        return { error: null };
+      });
+
+      const request = createRequest(orderNoLineItems);
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      expect(capturedData).not.toBeNull();
+      expect(capturedData!.product_id).toBeNull();
+      expect(capturedData!.revenue_cents).toBe(5000);
     });
   });
 
