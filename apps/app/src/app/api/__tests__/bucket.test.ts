@@ -1,4 +1,13 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// Mock server-only module (used by rate limiting)
+vi.mock("server-only", () => ({}));
+
+// Mock rate limiting to always allow requests in tests
+vi.mock("@v1/kv/ratelimit", () => ({
+  publicApiRatelimit: {},
+  checkRateLimit: vi.fn().mockResolvedValue(null), // null means no rate limit applied
+}));
 
 // Create chainable mock that properly simulates Supabase query chain
 const createChainableMock = () => {
@@ -74,12 +83,28 @@ describe("Bucket API", () => {
 
   describe("OPTIONS", () => {
     it("returns CORS headers with 204 status", async () => {
-      const response = await OPTIONS();
+      const request = new Request("http://localhost/api/bucket/test-id", {
+        method: "OPTIONS",
+      });
+      const response = await OPTIONS(request);
 
       expect(response.status).toBe(204);
       expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
-      expect(response.headers.get("Access-Control-Allow-Methods")).toBe(
-        "GET, OPTIONS"
+      expect(response.headers.get("Access-Control-Allow-Methods")).toContain(
+        "GET",
+      );
+    });
+
+    it("restricts CORS to valid Shopify domain when header present", async () => {
+      const request = new Request("http://localhost/api/bucket/test-id", {
+        method: "OPTIONS",
+        headers: { "X-Shopify-Shop-Domain": "test-store.myshopify.com" },
+      });
+      const response = await OPTIONS(request);
+
+      expect(response.status).toBe(204);
+      expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
+        "https://test-store.myshopify.com",
       );
     });
   });
@@ -95,7 +120,9 @@ describe("Bucket API", () => {
 
     it("returns 400 when visitor_id is missing", async () => {
       const request = createRequest(validTestId, {});
-      const response = await GET(request, { params: createParams(validTestId) });
+      const response = await GET(request, {
+        params: createParams(validTestId),
+      });
 
       expect(response.status).toBe(400);
       const data = await response.json();
@@ -103,7 +130,9 @@ describe("Bucket API", () => {
     });
 
     it("returns 400 when test_id is not a valid UUID", async () => {
-      const request = createRequest("not-a-uuid", { visitor_id: "visitor-123" });
+      const request = createRequest("not-a-uuid", {
+        visitor_id: "visitor-123",
+      });
       const response = await GET(request, {
         params: createParams("not-a-uuid"),
       });
@@ -115,7 +144,9 @@ describe("Bucket API", () => {
 
     it("includes CORS headers in error responses", async () => {
       const request = createRequest(validTestId, {});
-      const response = await GET(request, { params: createParams(validTestId) });
+      const response = await GET(request, {
+        params: createParams(validTestId),
+      });
 
       expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
     });
@@ -135,7 +166,9 @@ describe("Bucket API", () => {
       ]);
 
       const request = createRequest(validTestId, "visitor-123");
-      const response = await GET(request, { params: createParams(validTestId) });
+      const response = await GET(request, {
+        params: createParams(validTestId),
+      });
 
       expect(response.status).toBe(404);
       const data = await response.json();
@@ -156,7 +189,9 @@ describe("Bucket API", () => {
       ]);
 
       const request = createRequest(validTestId, "visitor-123");
-      const response = await GET(request, { params: createParams(validTestId) });
+      const response = await GET(request, {
+        params: createParams(validTestId),
+      });
 
       expect(response.status).toBe(400);
       const data = await response.json();
@@ -178,7 +213,9 @@ describe("Bucket API", () => {
       ]);
 
       const request = createRequest(validTestId, "visitor-123");
-      const response = await GET(request, { params: createParams(validTestId) });
+      const response = await GET(request, {
+        params: createParams(validTestId),
+      });
 
       expect(response.status).toBe(400);
       const data = await response.json();
@@ -202,7 +239,9 @@ describe("Bucket API", () => {
       ]);
 
       const request = createRequest(validTestId, "visitor-123");
-      const response = await GET(request, { params: createParams(validTestId) });
+      const response = await GET(request, {
+        params: createParams(validTestId),
+      });
 
       expect(response.status).toBe(400);
       const data = await response.json();
@@ -243,7 +282,9 @@ describe("Bucket API", () => {
       ]);
 
       const request = createRequest(validTestId, "returning-visitor");
-      const response = await GET(request, { params: createParams(validTestId) });
+      const response = await GET(request, {
+        params: createParams(validTestId),
+      });
 
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -279,7 +320,9 @@ describe("Bucket API", () => {
       ]);
 
       const request = createRequest(validTestId, "discount-visitor");
-      const response = await GET(request, { params: createParams(validTestId) });
+      const response = await GET(request, {
+        params: createParams(validTestId),
+      });
 
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -317,13 +360,17 @@ describe("Bucket API", () => {
       insertMock = vi.fn(() => ({ error: null }));
 
       const request = createRequest(validTestId, "new-visitor");
-      const response = await GET(request, { params: createParams(validTestId) });
+      const response = await GET(request, {
+        params: createParams(validTestId),
+      });
 
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.is_new_assignment).toBe(true);
       // Should be one of the variants
-      expect([mockVariants[0].id, mockVariants[1].id]).toContain(data.variant_id);
+      expect([mockVariants[0].id, mockVariants[1].id]).toContain(
+        data.variant_id,
+      );
       expect(["Control", "Test Variant"]).toContain(data.variant_name);
     });
 
@@ -359,7 +406,9 @@ describe("Bucket API", () => {
       }));
 
       const request = createRequest(validTestId, "race-condition-visitor");
-      const response = await GET(request, { params: createParams(validTestId) });
+      const response = await GET(request, {
+        params: createParams(validTestId),
+      });
 
       expect(response.status).toBe(200);
       const data = await response.json();
@@ -389,7 +438,9 @@ describe("Bucket API", () => {
       }));
 
       const request = createRequest(validTestId, "error-visitor");
-      const response = await GET(request, { params: createParams(validTestId) });
+      const response = await GET(request, {
+        params: createParams(validTestId),
+      });
 
       expect(response.status).toBe(500);
       const data = await response.json();
@@ -432,7 +483,9 @@ describe("Bucket API", () => {
       insertMock = vi.fn(() => ({ error: null }));
 
       const request = createRequest(validTestId, "single-test-visitor");
-      const response = await GET(request, { params: createParams(validTestId) });
+      const response = await GET(request, {
+        params: createParams(validTestId),
+      });
 
       expect(response.status).toBe(200);
       const data = await response.json();

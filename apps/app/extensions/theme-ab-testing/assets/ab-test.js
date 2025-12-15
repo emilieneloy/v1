@@ -9,25 +9,23 @@
  * - Cart attribute setting for checkout attribution
  */
 
-(function() {
-  'use strict';
-
+(() => {
   // Configuration from Liquid template
   const config = window.ABTestConfig || {};
-  const API_URL = config.apiUrl || '';
-  const SHOP_DOMAIN = config.shopDomain || '';
+  const API_URL = config.apiUrl || "";
+  const SHOP_DOMAIN = config.shopDomain || "";
 
   // Constants
-  const VISITOR_ID_KEY = 'ab_visitor_id';
-  const ASSIGNMENT_CACHE_KEY = 'ab_assignment';
-  const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+  const VISITOR_ID_KEY = "ab_visitor_id";
+  const ASSIGNMENT_CACHE_KEY = "ab_assignment";
+  const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days (match typical test duration)
 
   /**
    * Generate a unique visitor ID
    */
   function generateVisitorId() {
-    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-    let id = 'v_';
+    const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+    let id = "v_";
     for (let i = 0; i < 32; i++) {
       id += chars.charAt(Math.floor(Math.random() * chars.length));
     }
@@ -43,9 +41,9 @@
 
     // Try cookie as fallback
     if (!visitorId) {
-      const cookies = document.cookie.split(';');
+      const cookies = document.cookie.split(";");
       for (const cookie of cookies) {
-        const [name, value] = cookie.trim().split('=');
+        const [name, value] = cookie.trim().split("=");
         if (name === VISITOR_ID_KEY) {
           visitorId = value;
           break;
@@ -90,10 +88,13 @@
    */
   function cacheAssignment(testId, data) {
     try {
-      localStorage.setItem(`${ASSIGNMENT_CACHE_KEY}_${testId}`, JSON.stringify({
-        data,
-        timestamp: Date.now()
-      }));
+      localStorage.setItem(
+        `${ASSIGNMENT_CACHE_KEY}_${testId}`,
+        JSON.stringify({
+          data,
+          timestamp: Date.now(),
+        }),
+      );
     } catch {
       // localStorage might be full or disabled
     }
@@ -106,11 +107,18 @@
     if (!API_URL) return null;
 
     try {
-      const response = await fetch(`${API_URL}/api/tests/active?shop=${encodeURIComponent(SHOP_DOMAIN)}`);
+      const response = await fetch(
+        `${API_URL}/api/tests/active?shop=${encodeURIComponent(SHOP_DOMAIN)}`,
+        {
+          headers: {
+            "X-Shopify-Shop-Domain": SHOP_DOMAIN,
+          },
+        },
+      );
       if (!response.ok) return null;
       return await response.json();
     } catch (error) {
-      console.error('[AB Test] Failed to fetch active test:', error);
+      console.error("[AB Test] Failed to fetch active test:", error);
       return null;
     }
   }
@@ -143,7 +151,7 @@
       cacheAssignment(testId, data);
       return data;
     } catch (error) {
-      console.error('[AB Test] Failed to get variant assignment:', error);
+      console.error("[AB Test] Failed to get variant assignment:", error);
       return null;
     }
   }
@@ -159,8 +167,8 @@
 
     try {
       await fetch(`${API_URL}/api/track`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           test_id: variant.test_id || window.ABTest.testId,
           variant_id: variant.variant_id,
@@ -168,11 +176,11 @@
           event_type: eventType,
           product_id: data.product_id || null,
           order_id: data.order_id || null,
-          revenue_cents: data.revenue_cents || null
-        })
+          revenue_cents: data.revenue_cents || null,
+        }),
       });
     } catch (error) {
-      console.error('[AB Test] Failed to track event:', error);
+      console.error("[AB Test] Failed to track event:", error);
     }
   }
 
@@ -184,19 +192,19 @@
 
     // Common Shopify price selectors
     const priceSelectors = [
-      '.price__regular .price-item--regular',
-      '.price-item--regular',
-      '.product__price',
-      '.product-price',
-      '[data-product-price]',
-      '.money'
+      ".price__regular .price-item--regular",
+      ".price-item--regular",
+      ".product__price",
+      ".product-price",
+      "[data-product-price]",
+      ".money",
     ];
 
     for (const selector of priceSelectors) {
       const elements = document.querySelectorAll(selector);
-      elements.forEach(el => {
+      for (const el of elements) {
         // Skip if already modified
-        if (el.dataset.abModified === 'true') return;
+        if (el.dataset.abModified === "true") continue;
 
         // Get original price
         let originalPrice = el.dataset.abOriginalPrice;
@@ -204,22 +212,24 @@
           // Parse price from text (remove currency symbol, convert to cents)
           const priceText = el.textContent.trim();
           const match = priceText.match(/[\d,.]+/);
-          if (!match) return;
+          if (!match) continue;
 
-          originalPrice = Math.round(parseFloat(match[0].replace(/,/g, '')) * 100);
+          originalPrice = Math.round(
+            Number.parseFloat(match[0].replace(/,/g, "")) * 100,
+          );
           el.dataset.abOriginalPrice = originalPrice;
         }
 
         // Calculate new price
-        const newPrice = parseInt(originalPrice) + priceModifierCents;
-        if (newPrice < 0) return;
+        const newPrice = Number.parseInt(originalPrice) + priceModifierCents;
+        if (newPrice < 0) continue;
 
         // Format and update
-        const currency = window.Shopify?.currency?.active || 'USD';
+        const currency = window.Shopify?.currency?.active || "USD";
         const formatted = formatMoney(newPrice, currency);
         el.textContent = formatted;
-        el.dataset.abModified = 'true';
-      });
+        el.dataset.abModified = "true";
+      }
     }
   }
 
@@ -228,8 +238,8 @@
    */
   function formatMoney(cents, currency) {
     const amount = (cents / 100).toFixed(2);
-    const symbols = { USD: '$', EUR: '€', GBP: '£', CAD: 'CA$', AUD: 'A$' };
-    const symbol = symbols[currency] || '$';
+    const symbols = { USD: "$", EUR: "€", GBP: "£", CAD: "CA$", AUD: "A$" };
+    const symbol = symbols[currency] || "$";
     return `${symbol}${amount}`;
   }
 
@@ -243,19 +253,19 @@
     const variant = window.ABTest.variant;
 
     try {
-      await fetch('/cart/update.js', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      await fetch("/cart/update.js", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           attributes: {
             ab_test_id: window.ABTest.testId,
             ab_variant_id: variant.variant_id,
-            ab_visitor_id: visitorId
-          }
-        })
+            ab_visitor_id: visitorId,
+          },
+        }),
       });
     } catch (error) {
-      console.error('[AB Test] Failed to set cart attributes:', error);
+      console.error("[AB Test] Failed to set cart attributes:", error);
     }
   }
 
@@ -265,28 +275,29 @@
   function interceptAddToCart() {
     // Intercept fetch requests to /cart/add
     const originalFetch = window.fetch;
-    window.fetch = function(url, options) {
-      const urlStr = typeof url === 'string' ? url : url.toString();
+    window.fetch = function (...args) {
+      const url = args[0];
+      const urlStr = typeof url === "string" ? url : url.toString();
 
-      if (urlStr.includes('/cart/add')) {
+      if (urlStr.includes("/cart/add")) {
         // Track add-to-cart event
-        trackEvent('add_to_cart', {
-          product_id: getProductIdFromPage()
+        trackEvent("add_to_cart", {
+          product_id: getProductIdFromPage(),
         });
 
         // Set cart attributes after add
         setTimeout(setCartAttributes, 500);
       }
 
-      return originalFetch.apply(this, arguments);
+      return originalFetch.apply(this, args);
     };
 
     // Also intercept form submissions
-    document.addEventListener('submit', (e) => {
+    document.addEventListener("submit", (e) => {
       const form = e.target;
-      if (form.action && form.action.includes('/cart/add')) {
-        trackEvent('add_to_cart', {
-          product_id: getProductIdFromPage()
+      if (form.action?.includes("/cart/add")) {
+        trackEvent("add_to_cart", {
+          product_id: getProductIdFromPage(),
         });
         setTimeout(setCartAttributes, 500);
       }
@@ -321,7 +332,7 @@
    */
   async function init() {
     if (!API_URL) {
-      console.warn('[AB Test] No API URL configured');
+      console.warn("[AB Test] No API URL configured");
       return;
     }
 
@@ -333,14 +344,14 @@
       variant: null,
       ready: false,
       getVisitorId,
-      trackEvent
+      trackEvent,
     };
 
     try {
       // Fetch active test for this shop
       const activeTest = await fetchActiveTest();
       if (!activeTest || !activeTest.id) {
-        console.log('[AB Test] No active test for this shop');
+        console.log("[AB Test] No active test for this shop");
         return;
       }
 
@@ -351,7 +362,7 @@
       const variant = await getVariantAssignment(activeTest.id, productId);
 
       if (!variant) {
-        console.log('[AB Test] No variant assignment received');
+        console.log("[AB Test] No variant assignment received");
         return;
       }
 
@@ -370,7 +381,7 @@
       }
 
       // Track view event
-      trackEvent('view', { product_id: productId });
+      trackEvent("view", { product_id: productId });
 
       // Set up add-to-cart interception
       interceptAddToCart();
@@ -380,14 +391,13 @@
         interceptCheckout(variant.discount_code);
       }
 
-      console.log('[AB Test] Initialized:', {
+      console.log("[AB Test] Initialized:", {
         testId: activeTest.id,
         variant: variant.variant_name,
-        priceModifier: variant.price_modifier_cents
+        priceModifier: variant.price_modifier_cents,
       });
-
     } catch (error) {
-      console.error('[AB Test] Initialization failed:', error);
+      console.error("[AB Test] Initialization failed:", error);
     }
   }
 
@@ -395,7 +405,7 @@
    * Intercept checkout to apply discount code
    */
   function interceptCheckout(discountCode) {
-    document.addEventListener('click', (e) => {
+    document.addEventListener("click", (e) => {
       const link = e.target.closest('a[href*="/checkout"]');
       if (link) {
         e.preventDefault();
@@ -404,7 +414,7 @@
         setCartAttributes().then(() => {
           // Redirect with discount code
           const checkoutUrl = new URL(link.href);
-          checkoutUrl.searchParams.set('discount', discountCode);
+          checkoutUrl.searchParams.set("discount", discountCode);
           window.location.href = checkoutUrl.toString();
         });
       }
@@ -412,10 +422,9 @@
   }
 
   // Initialize when DOM is ready
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
   } else {
     init();
   }
-
 })();

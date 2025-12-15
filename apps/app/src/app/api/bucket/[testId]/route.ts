@@ -1,5 +1,6 @@
+import { checkRateLimit, publicApiRatelimit } from "@v1/kv/ratelimit";
+import { bucketRequestSchema, corsConfigs, getCorsHeaders } from "@v1/lib";
 import { createClient } from "@v1/supabase/server";
-import { bucketRequestSchema } from "@v1/lib/schemas";
 import { NextResponse } from "next/server";
 
 /**
@@ -9,28 +10,53 @@ import { NextResponse } from "next/server";
  *
  * Assigns a visitor to a test variant (or returns existing assignment)
  * Used by the Shopify theme snippet to determine which price to show
+ *
+ * Rate limit: 100 requests/minute per IP
  */
 
 interface Params {
   testId: string;
 }
 
-// CORS headers for cross-origin requests from Shopify storefront
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
-};
-
-export async function OPTIONS() {
+export async function OPTIONS(request: Request) {
+  const corsHeaders = getCorsHeaders(request, corsConfigs.bucket.methods);
   return new NextResponse(null, { status: 204, headers: corsHeaders });
 }
 
 export async function GET(
   request: Request,
-  { params }: { params: Promise<Params> }
+  { params }: { params: Promise<Params> },
 ) {
+  // Generate CORS headers based on request origin
+  const corsHeaders = getCorsHeaders(request, corsConfigs.bucket.methods);
+
   try {
+    // Rate limiting by IP address
+    const ip =
+      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+      request.headers.get("x-real-ip") ||
+      "unknown";
+
+    const rateLimitResult = await checkRateLimit(
+      publicApiRatelimit,
+      `bucket:${ip}`,
+    );
+    if (rateLimitResult && !rateLimitResult.success) {
+      return NextResponse.json(
+        { error: "Rate limit exceeded", retryAfter: rateLimitResult.reset },
+        {
+          status: 429,
+          headers: {
+            ...corsHeaders,
+            "Retry-After": String(
+              Math.ceil((rateLimitResult.reset - Date.now()) / 1000),
+            ),
+            "X-RateLimit-Remaining": String(rateLimitResult.remaining),
+          },
+        },
+      );
+    }
+
     const { testId } = await params;
     const { searchParams } = new URL(request.url);
     const visitorId = searchParams.get("visitor_id");
@@ -46,7 +72,7 @@ export async function GET(
     if (!validation.success) {
       return NextResponse.json(
         { error: "Invalid request", details: validation.error.flatten() },
-        { status: 400, headers: corsHeaders }
+        { status: 400, headers: corsHeaders },
       );
     }
 
@@ -73,14 +99,14 @@ export async function GET(
     if (testError || !test) {
       return NextResponse.json(
         { error: "Test not found" },
-        { status: 404, headers: corsHeaders }
+        { status: 404, headers: corsHeaders },
       );
     }
 
     if (test.status !== "active") {
       return NextResponse.json(
         { error: "Test is not active", status: test.status },
-        { status: 400, headers: corsHeaders }
+        { status: 400, headers: corsHeaders },
       );
     }
 
@@ -115,7 +141,7 @@ export async function GET(
           price_modifier_cents: variant.price_modifier_cents,
           is_new_assignment: false,
         },
-        { headers: corsHeaders }
+        { headers: corsHeaders },
       );
     }
 
@@ -131,7 +157,7 @@ export async function GET(
     if (!variants || variants.length === 0) {
       return NextResponse.json(
         { error: "No variants configured for this test" },
-        { status: 400, headers: corsHeaders }
+        { status: 400, headers: corsHeaders },
       );
     }
 
@@ -191,7 +217,7 @@ export async function GET(
               price_modifier_cents: variant.price_modifier_cents,
               is_new_assignment: false,
             },
-            { headers: corsHeaders }
+            { headers: corsHeaders },
           );
         }
       }
@@ -199,7 +225,7 @@ export async function GET(
       console.error("Assignment error:", assignmentError);
       return NextResponse.json(
         { error: "Failed to create assignment" },
-        { status: 500, headers: corsHeaders }
+        { status: 500, headers: corsHeaders },
       );
     }
 
@@ -211,13 +237,13 @@ export async function GET(
         price_modifier_cents: selectedVariant.price_modifier_cents,
         is_new_assignment: true,
       },
-      { headers: corsHeaders }
+      { headers: corsHeaders },
     );
   } catch (error) {
     console.error("Bucket API error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500, headers: corsHeaders }
+      { status: 500, headers: corsHeaders },
     );
   }
 }

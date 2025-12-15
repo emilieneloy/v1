@@ -1,7 +1,7 @@
-import { createClient } from "@v1/supabase/server";
+import crypto from "node:crypto";
 import { shopifyOrderWebhookSchema } from "@v1/lib/schemas";
+import { createClient } from "@v1/supabase/server";
 import { NextResponse } from "next/server";
-import crypto from "crypto";
 
 /**
  * Shopify Webhook Handler
@@ -16,7 +16,7 @@ import crypto from "crypto";
 function verifyShopifyWebhook(
   body: string,
   signature: string | null,
-  secret: string
+  secret: string,
 ): boolean {
   if (!signature || !secret) return false;
 
@@ -26,7 +26,7 @@ function verifyShopifyWebhook(
   try {
     return crypto.timingSafeEqual(
       Buffer.from(signature),
-      Buffer.from(computedSignature)
+      Buffer.from(computedSignature),
     );
   } catch {
     return false;
@@ -39,14 +39,20 @@ export async function POST(request: Request) {
     const signature = request.headers.get("x-shopify-hmac-sha256");
     const topic = request.headers.get("x-shopify-topic");
 
-    // Verify webhook signature
+    // Verify webhook signature - REQUIRE secret (fail closed for security)
     const webhookSecret = process.env.SHOPIFY_WEBHOOK_SECRET;
-    if (webhookSecret && !verifyShopifyWebhook(rawBody, signature, webhookSecret)) {
-      console.error("Invalid webhook signature");
-      return NextResponse.json(
-        { error: "Invalid signature" },
-        { status: 401 }
+    if (!webhookSecret) {
+      console.error(
+        "SHOPIFY_WEBHOOK_SECRET not configured - rejecting webhook",
       );
+      return NextResponse.json(
+        { error: "Webhook not configured" },
+        { status: 500 },
+      );
+    }
+    if (!verifyShopifyWebhook(rawBody, signature, webhookSecret)) {
+      console.error("Invalid webhook signature");
+      return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
     }
 
     // Only process orders/paid webhooks
@@ -60,10 +66,7 @@ export async function POST(request: Request) {
 
     if (!validation.success) {
       console.error("Invalid webhook payload:", validation.error.flatten());
-      return NextResponse.json(
-        { error: "Invalid payload" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
     }
 
     const order = validation.data;
@@ -95,25 +98,36 @@ export async function POST(request: Request) {
         .eq("id", testId)
         .single();
 
-      if (!testError && test && (test.status === "active" || test.status === "completed")) {
+      if (
+        !testError &&
+        test &&
+        (test.status === "active" || test.status === "completed")
+      ) {
         // Calculate order revenue in cents
-        const revenueCents = Math.round(parseFloat(order.total_price) * 100);
+        const revenueCents = Math.round(
+          Number.parseFloat(order.total_price) * 100,
+        );
 
-        // Record purchase event
-        const { error: eventError } = await supabase.from("events").insert({
-          test_id: testId,
-          variant_id: variantId,
-          visitor_id: visitorId,
-          event_type: "purchase",
-          order_id: order.id.toString(),
-          revenue_cents: revenueCents,
-          product_id: order.line_items[0]?.product_id?.toString() || null,
-        });
+        // Record purchase event (use upsert for idempotency - prevents duplicate orders)
+        const { error: eventError } = await supabase.from("events").upsert(
+          {
+            test_id: testId,
+            variant_id: variantId,
+            visitor_id: visitorId,
+            event_type: "purchase",
+            order_id: order.id.toString(),
+            revenue_cents: revenueCents,
+            product_id: order.line_items[0]?.product_id?.toString() || null,
+          },
+          { onConflict: "order_id,event_type", ignoreDuplicates: true },
+        );
 
         if (eventError) {
           console.error("Failed to record purchase event:", eventError);
         } else {
-          console.log(`Recorded purchase for test ${testId}, variant ${variantId}`);
+          console.log(
+            `Recorded purchase for test ${testId}, variant ${variantId}`,
+          );
         }
 
         return NextResponse.json({ success: true, attributed: true });
@@ -149,22 +163,36 @@ export async function POST(request: Request) {
                 ? `customer_${order.customer.id}`
                 : `order_${order.id}`;
 
-              const revenueCents = Math.round(parseFloat(order.total_price) * 100);
+              const revenueCents = Math.round(
+                Number.parseFloat(order.total_price) * 100,
+              );
 
-              const { error: eventError } = await supabase.from("events").insert({
-                test_id: test.id,
-                variant_id: variant.id,
-                visitor_id: pseudoVisitorId,
-                event_type: "purchase",
-                order_id: order.id.toString(),
-                revenue_cents: revenueCents,
-                product_id: order.line_items[0]?.product_id?.toString() || null,
-              });
+              // Use upsert for idempotency - prevents duplicate orders
+              const { error: eventError } = await supabase
+                .from("events")
+                .upsert(
+                  {
+                    test_id: test.id,
+                    variant_id: variant.id,
+                    visitor_id: pseudoVisitorId,
+                    event_type: "purchase",
+                    order_id: order.id.toString(),
+                    revenue_cents: revenueCents,
+                    product_id:
+                      order.line_items[0]?.product_id?.toString() || null,
+                  },
+                  { onConflict: "order_id,event_type", ignoreDuplicates: true },
+                );
 
               if (eventError) {
-                console.error("Failed to record purchase event (discount):", eventError);
+                console.error(
+                  "Failed to record purchase event (discount):",
+                  eventError,
+                );
               } else {
-                console.log(`Recorded purchase via discount code for test ${test.id}`);
+                console.log(
+                  `Recorded purchase via discount code for test ${test.id}`,
+                );
               }
 
               return NextResponse.json({ success: true, attributed: true });
@@ -180,7 +208,7 @@ export async function POST(request: Request) {
     console.error("Webhook processing error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

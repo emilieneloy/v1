@@ -1,4 +1,13 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// Mock server-only module (used by rate limiting)
+vi.mock("server-only", () => ({}));
+
+// Mock rate limiting to always allow requests in tests
+vi.mock("@v1/kv/ratelimit", () => ({
+  publicApiRatelimit: {},
+  checkRateLimit: vi.fn().mockResolvedValue(null), // null means no rate limit applied
+}));
 
 // Create chainable mock that properly simulates Supabase query chain
 const createChainableMock = () => {
@@ -42,7 +51,7 @@ vi.mock("@v1/supabase/server", () => ({
 }));
 
 // Import after mocking
-import { POST, OPTIONS } from "../track/route";
+import { OPTIONS, POST } from "../track/route";
 
 describe("Track API", () => {
   const validTestId = "550e8400-e29b-41d4-a716-446655440000";
@@ -61,12 +70,28 @@ describe("Track API", () => {
 
   describe("OPTIONS", () => {
     it("returns CORS headers with 204 status", async () => {
-      const response = await OPTIONS();
+      const request = new Request("http://localhost/api/track", {
+        method: "OPTIONS",
+      });
+      const response = await OPTIONS(request);
 
       expect(response.status).toBe(204);
       expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
-      expect(response.headers.get("Access-Control-Allow-Methods")).toBe(
-        "POST, OPTIONS"
+      expect(response.headers.get("Access-Control-Allow-Methods")).toContain(
+        "POST",
+      );
+    });
+
+    it("restricts CORS to valid Shopify domain when header present", async () => {
+      const request = new Request("http://localhost/api/track", {
+        method: "OPTIONS",
+        headers: { "X-Shopify-Shop-Domain": "test-store.myshopify.com" },
+      });
+      const response = await OPTIONS(request);
+
+      expect(response.status).toBe(204);
+      expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
+        "https://test-store.myshopify.com",
       );
     });
   });

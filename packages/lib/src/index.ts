@@ -59,3 +59,24 @@ export {
   type DiscountCode,
   type ShopifyProduct,
 } from "./shopify";
+
+// Error Codes and Utilities
+export {
+  ErrorCodes,
+  ErrorMessages,
+  ErrorStatusCodes,
+  createErrorResponse,
+  createRateLimitError,
+  createValidationError,
+  type ErrorCode,
+  type APIErrorResponse,
+} from "./errors";
+
+// CORS Utilities
+export {
+  isValidShopifyDomain,
+  getShopDomainFromRequest,
+  getCorsHeaders,
+  corsConfigs,
+  type CorsConfig,
+} from "./cors";

@@ -2,6 +2,11 @@
   "name": "shopify-ab-testing",
   "private": true,
   "workspaces": ["packages/*", "apps/*", "tooling/*"],
+  "lint-staged": {
+    "*.{js,jsx,ts,tsx,json,css,md}": [
+      "biome check --write --no-errors-on-unmatched"
+    ]
+  },
   "scripts": {
     "build": "turbo build",
     "clean": "git clean -xdf node_modules",
@@ -17,11 +22,14 @@
     "lint": "turbo lint && bun lint:repo",
     "lint:repo": "bunx sherif@latest",
     "lint:repo:fix": "bunx sherif@latest --fix",
-    "typecheck": "turbo typecheck"
+    "typecheck": "turbo typecheck",
+    "prepare": "husky"
   },
   "devDependencies": {
     "@biomejs/biome": "1.8.3",
     "@t3-oss/env-nextjs": "^0.11.1",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.7",
     "turbo": "2.1.1",
     "typescript": "^5.5.4"
   },

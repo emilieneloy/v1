@@ -1,5 +1,6 @@
+import { corsConfigs, getCorsHeaders, isValidShopifyDomain } from "@v1/lib";
 import { createClient } from "@v1/supabase/server";
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 
 /**
  * Get Active Test for Shop
@@ -10,24 +11,31 @@ import { NextRequest, NextResponse } from "next/server";
  * Used by the storefront script to initialize A/B testing.
  */
 
-// CORS headers for cross-origin requests from Shopify storefront
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
-};
-
-export async function OPTIONS() {
+export async function OPTIONS(request: Request) {
+  const corsHeaders = getCorsHeaders(request, corsConfigs.testsActive.methods);
   return new NextResponse(null, { status: 204, headers: corsHeaders });
 }
 
 export async function GET(request: NextRequest) {
+  // Generate CORS headers based on request origin
+  const corsHeaders = getCorsHeaders(request, corsConfigs.testsActive.methods);
+
   const shop = request.nextUrl.searchParams.get("shop");
 
-  if (!shop) {
+  // Validate shop parameter format using shared validator
+  if (!shop || !isValidShopifyDomain(shop)) {
     return NextResponse.json(
-      { error: "Missing shop parameter" },
-      { status: 400, headers: corsHeaders }
+      { error: "Invalid or missing shop parameter" },
+      { status: 400, headers: corsHeaders },
+    );
+  }
+
+  // Verify request comes from the shop's storefront via header
+  const shopHeader = request.headers.get("x-shopify-shop-domain");
+  if (shopHeader && shop !== shopHeader) {
+    return NextResponse.json(
+      { error: "Shop mismatch" },
+      { status: 401, headers: corsHeaders },
     );
   }
 
@@ -59,7 +67,7 @@ export async function GET(request: NextRequest) {
     // No active test found - this is not an error, just return null
     return NextResponse.json(
       { id: null, message: "No active test for this shop" },
-      { headers: corsHeaders }
+      { headers: corsHeaders },
     );
   }
 
@@ -70,6 +78,6 @@ export async function GET(request: NextRequest) {
       product_ids: test.product_ids,
       variants: test.variants,
     },
-    { headers: corsHeaders }
+    { headers: corsHeaders },
   );
 }

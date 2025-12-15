@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import crypto from "crypto";
+import crypto from "node:crypto";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Create chainable mock
 const createChainableMock = () => {
@@ -23,13 +23,13 @@ const createChainableMock = () => {
 };
 
 let chainableMock = createChainableMock();
-let insertMock = vi.fn(() => ({ error: null }));
+let upsertMock = vi.fn(() => ({ error: null }));
 
 vi.mock("@v1/supabase/server", () => ({
   createClient: vi.fn(() => ({
     from: vi.fn((table: string) => {
       if (table === "events") {
-        return { insert: insertMock };
+        return { upsert: upsertMock };
       }
       return chainableMock;
     }),
@@ -44,14 +44,14 @@ describe("Shopify Webhook API", () => {
 
   beforeEach(() => {
     chainableMock = createChainableMock();
-    insertMock = vi.fn(() => ({ error: null }));
+    upsertMock = vi.fn(() => ({ error: null }));
     vi.clearAllMocks();
     process.env.SHOPIFY_WEBHOOK_SECRET = webhookSecret;
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
-    delete process.env.SHOPIFY_WEBHOOK_SECRET;
+    process.env.SHOPIFY_WEBHOOK_SECRET = undefined;
   });
 
   // Helper to create valid HMAC signature
@@ -62,10 +62,11 @@ describe("Shopify Webhook API", () => {
 
   const createRequest = (
     body: object,
-    headers: Record<string, string> = {}
+    headers: Record<string, string> = {},
   ) => {
     const bodyString = JSON.stringify(body);
-    const signature = headers["x-shopify-hmac-sha256"] || createSignature(bodyString);
+    const signature =
+      headers["x-shopify-hmac-sha256"] || createSignature(bodyString);
 
     return new Request("http://localhost/api/webhooks/shopify", {
       method: "POST",
@@ -119,8 +120,8 @@ describe("Shopify Webhook API", () => {
       expect(response.status).toBe(200);
     });
 
-    it("skips verification when no webhook secret is configured", async () => {
-      delete process.env.SHOPIFY_WEBHOOK_SECRET;
+    it("returns 500 when webhook secret is not configured (fail closed)", async () => {
+      process.env.SHOPIFY_WEBHOOK_SECRET = undefined;
 
       const request = new Request("http://localhost/api/webhooks/shopify", {
         method: "POST",
@@ -133,8 +134,10 @@ describe("Shopify Webhook API", () => {
 
       const response = await POST(request);
 
-      // Should process normally without signature check
-      expect(response.status).toBe(200);
+      // Should reject with 500 when secret is not configured (security: fail closed)
+      expect(response.status).toBe(500);
+      const data = await response.json();
+      expect(data.error).toBe("Webhook not configured");
     });
   });
 
@@ -367,7 +370,7 @@ describe("Shopify Webhook API", () => {
       ]);
 
       let capturedData: Record<string, unknown> | null = null;
-      insertMock = vi.fn((data) => {
+      upsertMock = vi.fn((data) => {
         capturedData = data;
         return { error: null };
       });
@@ -405,7 +408,7 @@ describe("Shopify Webhook API", () => {
       ]);
 
       let capturedData: Record<string, unknown> | null = null;
-      insertMock = vi.fn((data) => {
+      upsertMock = vi.fn((data) => {
         capturedData = data;
         return { error: null };
       });
@@ -415,7 +418,9 @@ describe("Shopify Webhook API", () => {
 
       expect(response.status).toBe(200);
       expect(capturedData).not.toBeNull();
-      expect(capturedData!.visitor_id).toBe(`customer_${validOrder.customer.id}`);
+      expect(capturedData!.visitor_id).toBe(
+        `customer_${validOrder.customer.id}`,
+      );
     });
   });
 
@@ -436,9 +441,9 @@ describe("Shopify Webhook API", () => {
         { data: { id: "test-uuid-123", status: "active" }, error: null },
       ]);
 
-      // Capture insert call
+      // Capture upsert call
       let capturedData: Record<string, unknown> | null = null;
-      insertMock = vi.fn((data) => {
+      upsertMock = vi.fn((data) => {
         capturedData = data;
         return { error: null };
       });
@@ -476,7 +481,7 @@ describe("Shopify Webhook API", () => {
       ]);
 
       let capturedData: Record<string, unknown> | null = null;
-      insertMock = vi.fn((data) => {
+      upsertMock = vi.fn((data) => {
         capturedData = data;
         return { error: null };
       });
@@ -541,15 +546,15 @@ describe("Shopify Webhook API", () => {
         { data: { id: "test-uuid-123", status: "active" }, error: null },
       ]);
 
-      // Insert fails
-      insertMock = vi.fn(() => ({
+      // Upsert fails
+      upsertMock = vi.fn(() => ({
         error: { code: "ERROR", message: "database error" },
       }));
 
       const request = createRequest(orderWithAttribution);
       const response = await POST(request);
 
-      // Still returns success (webhook should not fail even if event insert fails)
+      // Still returns success (webhook should not fail even if event upsert fails)
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.attributed).toBe(true);
